@@ -1,67 +1,4 @@
 
-CREATE or replace FUNCTION pg_temp.dobadmath(text) RETURNS text
-    as
-$dobadmathfunc$with recursive finput as (
-    select $1 as finput
-)
-,domath(remaining,iter) as(
-select coalesce((case when (regexp_match(finput,'^\d+ ([\+\*]) \d+'))[1] = '+'
-            then (regexp_match(finput,'^(\d+) [\+\*] \d+'))[1]::bigint + (regexp_match(finput,'^\d+ [\+\*] (\d+)'))[1]::bigint
-            else (regexp_match(finput,'^(\d+) [\+\*] \d+'))[1]::bigint * (regexp_match(finput,'^\d+ [\+\*] (\d+)'))[1]::bigint
-            end)::text||(regexp_match(finput,'^\d+ [\+\*] \d+(.*)'))[1], finput) as remaining,
-       1::int as iter
-from finput
-union all
-select (case when (regexp_match(remaining,'^\d+ ([\+\*]) \d+'))[1] = '+'
-            then (regexp_match(remaining,'^(\d+) [\+\*] \d+'))[1]::bigint + (regexp_match(remaining,'^\d+ [\+\*] (\d+)'))[1]::bigint
-            else (regexp_match(remaining,'^(\d+) [\+\*] \d+'))[1]::bigint * (regexp_match(remaining,'^\d+ [\+\*] (\d+)'))[1]::bigint
-            end)::text||(regexp_match(remaining,'^\d+ [\+\*] \d+(.*)'))[1] as remaining,
-       iter + 1
-from domath
-    where remaining ~ '[\+\*]'
-)
-select remaining::text from domath
-order by iter desc limit 1;$dobadmathfunc$
-    LANGUAGE SQL
-    IMMUTABLE
-    RETURNS NULL ON NULL INPUT;
-
-
-
-CREATE or replace FUNCTION pg_temp.doworsemath(text) RETURNS text
-    as
-$dobadmathfunc$with recursive finput as (
-    select $1 as finput
---     select '2 * 3' as finput
-)
-,domath(remaining,iter) as(
-select
-       coalesce(regexp_replace(finput,'\d+ \+ \d+',(case when (regexp_match(finput,'\d+ (\+) \d+'))[1] = '+'
-            then (regexp_match(finput,'(\d+) \+ \d+'))[1]::bigint + (regexp_match(finput,'\d+ \+ (\d+)'))[1]::bigint
-            else (regexp_match(finput,'(\d+) \+ \d+'))[1]::bigint * (regexp_match(finput,'\d+ \+ (\d+)'))[1]::bigint
-            end)::text),finput) as remaining,
-       1::int as iter
-from finput
-union all
-select
-       regexp_replace(remaining,'\d+ \+ \d+',(case when (regexp_match(remaining,'\d+ (\+) \d+'))[1] = '+'
-            then (regexp_match(remaining,'(\d+) \+ \d+'))[1]::bigint + (regexp_match(remaining,'\d+ \+ (\d+)'))[1]::bigint
-            else (regexp_match(remaining,'(\d+) \+ \d+'))[1]::bigint * (regexp_match(remaining,'\d+ \+ (\d+)'))[1]::bigint
-            end)::text)as remaining,
-       iter + 1
-from domath
-    where remaining ~ '\+'
-)
-select remaining::text from domath
-order by iter desc
-    limit 1
-;$dobadmathfunc$
-    LANGUAGE SQL
-    IMMUTABLE
-    RETURNS NULL ON NULL INPUT;
-
-
-
 with recursive inputs as (
     select *
     from regexp_split_to_table(
@@ -560,8 +497,7 @@ ababaaabbbabbaabbabaaabbaaabbbba
 bababbabaabbaaaaababaabbbabbabbbbbabbbaaaabababababbbabaaaabbbbaababbaaa
 aababaaababababbabaaabba
 bbaababbabbabaababbbbaababbabaaaabaaaabbaaabbabbabbbaabaaabababbaabbbbbb
-abbbabbbaabbaababbababbbbaabbabbbababaaaabababaababbaaaabaabbaaabbabbbbaababbbbb
-$input$, '\n\n') WITH ORDINALITY as t(rowrow, baseid)
+abbbabbbaabbaababbababbbbaabbabbbababaaaabababaababbaaaabaabbaaabbabbbbaababbbbb$input$, '\n\n') WITH ORDINALITY as t(rowrow, baseid)
 )
 ,parsed as(
 select i.*,
@@ -648,132 +584,241 @@ drop table if exists temp_final_rules2;
 drop table if exists temp_final_rules3;
 drop table if exists temp_parsed;
 
--- create temp table temp_final_rules3 as
-select fh.first_half||sh.second_half as cookedelement
-from(
-select * ,(generate_series(2,floor(max_length * 1.0/char_length(cookedelement)))) as repeatss,
-       repeat(cookedelement,(generate_series(2,floor(max_length * 1.0/char_length(cookedelement))))::int) as first_half,
-       generate_series(2,floor(max_length * 1.0/char_length(cookedelement))) * char_length(cookedelement) as first_half_length
-from temp_final_rules2 t
-where t.elementid = 42
-) fh
-inner join (
-select * ,(generate_series(1,floor(max_length * 1.0/char_length(cookedelement)))) as repeatss,
-       repeat(cookedelement,(generate_series(1,floor(max_length * 1.0/char_length(cookedelement))))::int) as second_half,
-       generate_series(1,floor(max_length * 1.0/char_length(cookedelement))) * char_length(cookedelement) as second_half_length
-from temp_final_rules2 t
-where t.elementid = 31
-) sh on sh.second_half_length + fh.first_half_length <= fh.max_length
-    and sh.repeatss+1 <= fh.repeatss
-;
-
-
-
-create temp table temp_final_rules3 as
-with recursive first_half(cookedelement,repeats,half_length) as(
-select cookedelement,
-       1 as repeatss,
-        char_length(cookedelement) as half_length,
-       max_length
-from temp_final_rules2 t
-where t.elementid = 42
-union all
-select fh.cookedelement||t.cookedelement,
-       repeats+1,
-       char_length(fh.cookedelement||t.cookedelement),
-       fh.max_length
-from first_half fh
-cross join temp_final_rules2 t
-where t.elementid = 42
-    and char_length(fh.cookedelement||t.cookedelement) < fh.max_length
-    )
-,second_half(cookedelement,repeats,half_length) as(
-select cookedelement,
-       1 as repeatss,
-        char_length(cookedelement) as half_length
-from temp_final_rules2 t
-where t.elementid = 31
-union all
-select fh.cookedelement||t.cookedelement,
-       repeats+1,
-       char_length(fh.cookedelement||t.cookedelement)
-from second_half fh
-cross join temp_final_rules2 t
-where t.elementid = 31
-    and char_length(fh.cookedelement||t.cookedelement) < max_length
-    )
-select fh.cookedelement||sh.cookedelement
-from first_half fh
-inner join second_half sh on sh.half_length + fh.half_length <= max_length
-;
-
-with recursive testing(element,reducedelement,left_removals) as (
-select p.element,
-       left(right(p.element,-8),-8) as reducedelement,
-       1 as left_removals
-from temp_parsed p
-where exists(
-    select cookedelement
-from temp_final_rules2 t
-where t.elementid = 42
-    and p.element ~ ('^'||t.cookedelement)
-          )
-    and exists(
-    select cookedelement
-from temp_final_rules2 t
-where t.elementid = 31
-    and p.element ~ (t.cookedelement||'$')
-          )
-union all
-select p.element,
-       right(reducedelement,-8),
-       left_removals + 1
-from testing p
-where exists(
-    select cookedelement
-from temp_final_rules2 t
-where t.elementid = 42
-    and p.reducedelement ~ ('^'||t.cookedelement)
-          )
-)
-,testing2(element,reducedelement,right_removals,left_removals) as (
 select
-    p.element,
-       left(p.reducedelement,-8),
-       1 + 1 as right_removals,
-       p.left_removals
-from testing p
-where exists(
-    select cookedelement
-from temp_final_rules2 t
-where t.elementid = 31
-    and p.reducedelement ~ (t.cookedelement||'$')
-          )
-    and p.reducedelement <> ''
-    and p.left_removals > 1
-union all
-    select
-    p.element,
-       left(p.reducedelement,-8),
-       right_removals + 1 as right_removals,
-       p.left_removals
-from testing2 p
-where exists(
-    select cookedelement
-from temp_final_rules2 t
-where t.elementid = 31
-    and p.reducedelement ~ (t.cookedelement||'$')
-          )
-    and p.left_removals > right_removals + 1
-)
-select * from testing;
+    *
+from temp_final_rules2
+where elementid = 42
+;
 
-select distinct element from(
-select element from testing2 t2
-where t2.reducedelement = ''
-union
-select element from testing t
-where t.reducedelement = '')t
--- order by element,left_removals desc
+--364 total, 341 match on 1 left, 329 match on 1 left 1 right, 317 match on 2 left 1 right
+drop table if exists basic_reduction;
+create temp table basic_reduction as
+select distinct on(p.element)
+       p.element,
+       regexp_replace(
+               regexp_replace(
+                       regexp_replace(p.element, '^' || t.cookedelement, ''),
+                       t2.cookedelement || '$', ''),
+           '^'||t3.cookedelement,'') as reduced_element,
+       t.cookedelement as element_removedl1,
+       t3.cookedelement as element_removedl2,
+       t2.cookedelement as element_removedr1
+from temp_parsed p
+inner join temp_final_rules2 t on p.element ~ ('^'||t.cookedelement) and t.elementid = 42
+inner join temp_final_rules2 t2 on regexp_replace(p.element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+inner join temp_final_rules2 t3 on regexp_replace(
+                       regexp_replace(p.element, '^' || t.cookedelement, ''),
+                       t2.cookedelement || '$', '') ~ ('^'||t3.cookedelement) and t3.elementid = 42
+;
+--132 match also answer to part 1
+--27 rows in extra 11
+insert into  matches (
+    select element
+--     from basic_reduction br
+-- from extra11 br
+-- from two_extra11 br
+-- from three_extra11 br
+-- from two_extra11_extra8 br
+-- from two_extra11_two_extra8 br
+-- from extra11_extra8 br
+-- from extra11_two_extra8 br
+-- from extra11_three_extra8 br
+-- from extra8 br
+-- from two_extra8 br
+-- from three_extra8 br
+from four_extra8 br
+    where reduced_element = ''
+);
 
--- 308 too high, 227 too low
+select count(distinct element) from matches;
+
+--88 need at least one 31, 82 have a right to match
+create temp table extra11 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(
+                       regexp_replace(p.reduced_element, '^' || t.cookedelement, ''),
+                       t2.cookedelement || '$', '') as reduced_element
+from basic_reduction p
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+-- left join temp_final_rules2 t2 on 'abababbaaaaabaab' ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and exists(
+        select t9.elementid
+        from temp_final_rules2 t9
+        where t9.elementid = 31
+            and p.reduced_element ~ (t9.cookedelement||'$')
+    )
+-- and p.element ='aaaabaababaabaaaaabbbaaaabababbaaaaabaabbbbabaaa'
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+
+create temp table two_extra11 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(
+                       regexp_replace(p.reduced_element, '^' || t.cookedelement, ''),
+                       t2.cookedelement || '$', '') as reduced_element
+from extra11 p
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and exists(
+        select t9.elementid
+        from temp_final_rules2 t9
+        where t9.elementid = 31
+            and p.reduced_element ~ (t9.cookedelement||'$')
+    )
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table three_extra11 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(
+                       regexp_replace(p.reduced_element, '^' || t.cookedelement, ''),
+                       t2.cookedelement || '$', '') as reduced_element
+from two_extra11 p
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and exists(
+        select t9.elementid
+        from temp_final_rules2 t9
+        where t9.elementid = 31
+            and p.reduced_element ~ (t9.cookedelement||'$')
+    )
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table three_extra11_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from three_extra11 p
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+
+create temp table two_extra11_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from two_extra11 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table two_extra11_two_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from two_extra11_extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table extra11_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from extra11 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table extra11_two_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from extra11_extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table extra11_three_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from extra11_two_extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from basic_reduction p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table two_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table three_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from two_extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
+create temp table four_extra8 as
+select p.element,
+       p.reduced_element as prev_reduced_element,
+       regexp_replace(p.reduced_element, '^' || t.cookedelement, '') as reduced_element
+from three_extra8 p
+left join matches m on m.element = p.element
+inner join temp_final_rules2 t on p.reduced_element ~ ('^'||t.cookedelement) and t.elementid = 42
+-- inner join temp_final_rules2 t2 on regexp_replace(p.reduced_element, '^' || t.cookedelement, '') ~ (t2.cookedelement||'$') and t2.elementid = 31
+where reduced_element != ''
+    and m.element is null
+--     and char_length(p.reduced_element) > 8 --I think this will be dealt with later
+;
+
