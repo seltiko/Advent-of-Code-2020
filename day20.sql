@@ -177,9 +177,10 @@ from inputs i
     from parsed p
     left join (select generate_series(1,8) as g) gs on true
 )
-,first_row(idused,rotused,butts,rightward,bottomward) as(
+,first_row(idused,rotused,tops,butts,rightward,bottomward) as(
 select array[tilenum] as idsused,
        array[rotid] as rotused,
+       array[top] as tops, --lol
        array[bottom] as butts, --lol
        rright as rightward,
        bottom as bottomward
@@ -199,9 +200,10 @@ from rotates r
 union all
 select idused||r2.tilenum,
        rotused||r2.rotid,
+       tops||r2.top,
        butts||r2.bottom,
-       rightward,
-       bottomward
+       r2.rright,
+       r2.bottom
 from first_row fr
 inner join rotates r2 on r2.tilenum != all(fr.idused) and r2.lleft = fr.rightward
 where 'yes'/*exists(
@@ -229,9 +231,20 @@ where r2.id is null
 from dcorners)
 -- select * from rotates where tilenum = 2971;
 
+,combine_rows(idused,rotused,butts) as (
+    select idused, rotused, butts
+    from first_row fr
+    where array_length(fr.idused, 1) = 3
+    union all
+    select fr.idused || fr2.idused,
+           fr.rotused || fr2.rotused,
+           fr2.butts
+    from combine_rows fr
+             inner join first_row fr2 on fr2.tops = fr.butts and not (fr2.idused && fr.idused)
+    where 'yes'
+      and array_length(fr2.idused, 1) = 3
+)
 select *
-from first_row fr
--- inner join
--- where array_length(idused,1) = 3
-
+from combine_rows
+where array_length(idused, 1) = 9
 ;
