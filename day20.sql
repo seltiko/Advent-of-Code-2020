@@ -248,3 +248,94 @@ select *
 from combine_rows
 where array_length(idused, 1) = 9
 ;
+
+                               
+                               
+                               
+with test as (
+    select '..##.#..#.
+##..#.....
+#...##..#.
+####.#...#
+##.##.###.
+##...#.###
+.#.#.#..##
+..#....#..
+###...#.#.
+..###..###' as t
+)
+,testt as (
+    select t,
+           regexp_split_to_table(t, '\n') as rowss
+    from test
+)
+,testtt as (
+    select *,
+           regexp_split_to_table(rowss, '') as baseelement,
+           row_number() over () as y
+    from testt
+)
+,testttt as (
+    select *, row_number() over (partition by y) as x
+    from testtt
+)
+,testtttt as (
+    select *
+   , generate_series(1, 8) as rotid
+/*       case when generate_series(1,8) = 1 then point(x,y)
+        when generate_series(1,8) = 2 then point(x,y)*point(cos(radians(90)),sin(radians(90)))
+        when generate_series(1,8) = 3 then point(x,y)*point(cos(radians(180)),sin(radians(180)))
+        when generate_series(1,8) = 4 then point(x,y)*point(cos(radians(270)),sin(radians(270)))
+        when generate_series(1,8) = 5 then point(-x,y)
+        when generate_series(1,8) = 6 then point(-x,y)*point(cos(radians(90)),sin(radians(90)))
+        when generate_series(1,8) = 7 then point(-x,y)*point(cos(radians(180)),sin(radians(180)))
+        when generate_series(1,8) = 8 then point(-x,y)*point(cos(radians(270)),sin(radians(270)))
+            end*/
+/*       point(x,y)*point(cos(radians(90)),sin(radians(90))),
+       point(x,y)*point(cos(radians(180)),sin(radians(180))),
+       point(x,y)*point(cos(radians(270)),sin(radians(270))),
+       point(-x,y),
+       point(-x,y)*point(cos(radians(90)),sin(radians(90))),
+       point(-x,y)*point(cos(radians(180)),sin(radians(180))),
+       point(-x,y)*point(cos(radians(270)),sin(radians(270))),
+       point(x,y)*/
+    from testttt
+    )
+,final_i_hope as (
+    select t,
+           rotid,
+           round((case
+                      when rotid = 1 then point(x, y)
+                      when rotid = 2 then point(x, y) * point(cos(radians(90)), sin(radians(90)))
+                      when rotid = 3 then point(x, y) * point(cos(radians(180)), sin(radians(180)))
+                      when rotid = 4 then point(x, y) * point(cos(radians(270)), sin(radians(270)))
+                      when rotid = 5 then point(-x, y)
+                      when rotid = 6 then point(-x, y) * point(cos(radians(90)), sin(radians(90)))
+                      when rotid = 7 then point(-x, y) * point(cos(radians(180)), sin(radians(180)))
+                      when rotid = 8 then point(-x, y) * point(cos(radians(270)), sin(radians(270)))
+               end)[1]) as newy,
+           array_to_string(array_agg(baseelement order by (case
+                                                               when rotid = 1 then point(x, y)
+                                                               when rotid = 2
+                                                                   then point(x, y) * point(cos(radians(90)), sin(radians(90)))
+                                                               when rotid = 3
+                                                                   then point(x, y) * point(cos(radians(180)), sin(radians(180)))
+                                                               when rotid = 4
+                                                                   then point(x, y) * point(cos(radians(270)), sin(radians(270)))
+                                                               when rotid = 5 then point(-x, y)
+                                                               when rotid = 6
+                                                                   then point(-x, y) * point(cos(radians(90)), sin(radians(90)))
+                                                               when rotid = 7
+                                                                   then point(-x, y) * point(cos(radians(180)), sin(radians(180)))
+                                                               when rotid = 8
+                                                                   then point(-x, y) * point(cos(radians(270)), sin(radians(270)))
+               end)[0]), '') as newrowss
+    from testtttt
+    group by 1, 2, 3
+)
+select t,rotid,
+       array_to_string(array_agg(newrowss order by newy),'
+') as rotated_text
+from final_i_hope
+group by 1,2
+;
